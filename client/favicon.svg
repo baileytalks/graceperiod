@@ -1,0 +1,32 @@
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Outer ring -->
+  <circle cx="16" cy="16" r="14" stroke="#e22a43" stroke-width="1.5" fill="#f4f1de"/>
+  
+  <!-- Hour markers -->
+  <circle cx="16" cy="4" r="1" fill="#e22a43"/>
+  <circle cx="28" cy="16" r="1" fill="#e22a43"/>
+  <circle cx="16" cy="28" r="1" fill="#e22a43"/>
+  <circle cx="4" cy="16" r="1" fill="#e22a43"/>
+  
+  <!-- Clock hands with animation -->
+  <g style="animation: rotate-hour 43200s linear infinite; transform-origin: 16px 16px;">
+    <path d="M16 16 L16 10" stroke="#e22a43" stroke-width="2" stroke-linecap="round"/>
+  </g>
+  <g style="animation: rotate-minute 3600s linear infinite; transform-origin: 16px 16px;">
+    <path d="M16 16 L22 16" stroke="#e22a43" stroke-width="1.5" stroke-linecap="round"/>
+  </g>
+  
+  <!-- Center dot -->
+  <circle cx="16" cy="16" r="2" fill="#e22a43"/>
+  
+  <style>
+    @keyframes rotate-hour {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    @keyframes rotate-minute {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</svg>
