@@ -1,10 +1,11 @@
 import { Resend } from 'resend';
 
-if (!process.env.RESEND_API_KEY) {
-  throw new Error("RESEND_API_KEY environment variable must be set");
+let resend: Resend | undefined;
+if (process.env.RESEND_API_KEY) {
+  resend = new Resend(process.env.RESEND_API_KEY);
+} else {
+  console.warn('RESEND_API_KEY not set; emails will not be sent.');
 }
-
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 interface EmailParams {
   to: string;
@@ -28,8 +29,13 @@ export async function sendEmail(params: EmailParams): Promise<boolean> {
       emailData.text = params.text;
     }
     
-    await resend.emails.send(emailData);
-    return true;
+    if (resend) {
+      await resend.emails.send(emailData);
+      return true;
+    } else {
+      console.info('Email skipped: RESEND_API_KEY not configured');
+      return false;
+    }
   } catch (error) {
     console.error('Resend email error:', error);
     return false;

@@ -1,26 +1,29 @@
 import { Client } from "@notionhq/client";
 
-// Initialize Notion client
-export const notion = new Client({
-    auth: process.env.NOTION_INTEGRATION_SECRET!,
-});
+export const notion = process.env.NOTION_INTEGRATION_SECRET
+  ? new Client({ auth: process.env.NOTION_INTEGRATION_SECRET })
+  : undefined;
 
 // Extract the page ID from the Notion page URL
-function extractPageIdFromUrl(pageUrl: string): string {
+function extractPageIdFromUrl(pageUrl: string): string | null {
     const match = pageUrl.match(/([a-f0-9]{32})(?:[?#]|$)/i);
     if (match && match[1]) {
         return match[1];
     }
-
-    throw Error("Failed to extract page ID");
+    return null;
 }
 
-export const NOTION_PAGE_ID = extractPageIdFromUrl(process.env.NOTION_PAGE_URL!);
+export const NOTION_PAGE_ID = process.env.NOTION_PAGE_URL
+  ? extractPageIdFromUrl(process.env.NOTION_PAGE_URL)
+  : null;
 
 /**
  * Lists all child databases contained within NOTION_PAGE_ID
  */
 export async function getNotionDatabases() {
+    if (!notion || !NOTION_PAGE_ID) {
+        return [];
+    }
     const childDatabases = [];
 
     try {
@@ -79,6 +82,9 @@ export async function findDatabaseByTitle(title: string) {
 // Get all posts from the Notion database
 export async function getPosts() {
     try {
+        if (!notion || !NOTION_PAGE_ID) {
+            return [];
+        }
         // The NOTION_PAGE_ID is actually a database ID, so query it directly
         const response = await notion.databases.query({
             database_id: NOTION_PAGE_ID,
