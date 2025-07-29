@@ -51,13 +51,14 @@ import { Pool, neonConfig } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import ws from "ws";
 neonConfig.webSocketConstructor = ws;
-if (!process.env.DATABASE_URL) {
-  throw new Error(
-    "DATABASE_URL must be set. Did you forget to provision a database?"
-  );
+var pool;
+var db;
+if (process.env.DATABASE_URL) {
+  pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  db = drizzle({ client: pool, schema: schema_exports });
+} else {
+  console.warn("DATABASE_URL not set, falling back to in-memory storage");
 }
-var pool = new Pool({ connectionString: process.env.DATABASE_URL });
-var db = drizzle({ client: pool, schema: schema_exports });
 
 // server/storage.ts
 import { eq } from "drizzle-orm";
@@ -106,17 +107,62 @@ var DatabaseStorage = class {
     return counter.count;
   }
 };
-var storage = new DatabaseStorage();
+var InMemoryStorage = class {
+  constructor() {
+    this.users = [];
+    this.emailSubs = [];
+    this.visitor = { count: 1012, lastUpdated: /* @__PURE__ */ new Date(), id: 1 };
+    this.nextUserId = 1;
+    this.nextEmailId = 1;
+  }
+  async getUser(id) {
+    return this.users.find((u) => u.id === id);
+  }
+  async getUserByUsername(username) {
+    return this.users.find((u) => u.username === username);
+  }
+  async createUser(user) {
+    const newUser = { id: this.nextUserId++, ...user };
+    this.users.push(newUser);
+    return newUser;
+  }
+  async createEmailSubscription(subscription) {
+    const newSub = {
+      id: this.nextEmailId++,
+      subscribedAt: /* @__PURE__ */ new Date(),
+      ...subscription
+    };
+    this.emailSubs.push(newSub);
+    return newSub;
+  }
+  async getEmailSubscription(email) {
+    return this.emailSubs.find((s) => s.email === email);
+  }
+  async getAllEmailSubscriptions() {
+    return [...this.emailSubs];
+  }
+  async incrementVisitorCount() {
+    this.visitor.count += 1;
+    this.visitor.lastUpdated = /* @__PURE__ */ new Date();
+    return this.visitor.count;
+  }
+  async getVisitorCount() {
+    return this.visitor.count;
+  }
+};
+var storage = db ? new DatabaseStorage() : new InMemoryStorage();
 
 // server/routes.ts
 import { z } from "zod";
 
 // server/email.ts
 import { Resend } from "resend";
-if (!process.env.RESEND_API_KEY) {
-  throw new Error("RESEND_API_KEY environment variable must be set");
+var resend;
+if (process.env.RESEND_API_KEY) {
+  resend = new Resend(process.env.RESEND_API_KEY);
+} else {
+  console.warn("RESEND_API_KEY not set; emails will not be sent.");
 }
-var resend = new Resend(process.env.RESEND_API_KEY);
 async function sendEmail(params) {
   try {
     const emailData = {
@@ -129,8 +175,13 @@ async function sendEmail(params) {
     } else if (params.text) {
       emailData.text = params.text;
     }
-    await resend.emails.send(emailData);
-    return true;
+    if (resend) {
+      await resend.emails.send(emailData);
+      return true;
+    } else {
+      console.info("Email skipped: RESEND_API_KEY not configured");
+      return false;
+    }
   } catch (error) {
     console.error("Resend email error:", error);
     return false;
@@ -180,19 +231,22 @@ Your Grace Period website \u{1F495}`,
 
 // server/notion.ts
 import { Client } from "@notionhq/client";
-var notion = new Client({
+var notion = process.env.NOTION_INTEGRATION_SECRET ? new Client({
   auth: process.env.NOTION_INTEGRATION_SECRET
-});
+}) : void 0;
 function extractPageIdFromUrl(pageUrl) {
   const match = pageUrl.match(/([a-f0-9]{32})(?:[?#]|$)/i);
   if (match && match[1]) {
     return match[1];
   }
-  throw Error("Failed to extract page ID");
+  return null;
 }
-var NOTION_PAGE_ID = extractPageIdFromUrl(process.env.NOTION_PAGE_URL);
+var NOTION_PAGE_ID = process.env.NOTION_PAGE_URL ? extractPageIdFromUrl(process.env.NOTION_PAGE_URL) : null;
 async function getPosts() {
   try {
+    if (!notion || !NOTION_PAGE_ID) {
+      return [];
+    }
     const response = await notion.databases.query({
       database_id: NOTION_PAGE_ID,
       sorts: [
@@ -316,40 +370,12 @@ async function registerRoutes(app2) {
 import express from "express";
 import fs from "fs";
 import path2 from "path";
-import { createServer as createViteServer, createLogger } from "vite";
 
 // vite.config.ts
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-import path from "path";
-import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
-var vite_config_default = defineConfig({
-  plugins: [
-    react(),
-    runtimeErrorOverlay(),
-    ...process.env.NODE_ENV !== "production" && process.env.REPL_ID !== void 0 ? [
-      await import("@replit/vite-plugin-cartographer").then(
-        (m) => m.cartographer()
-      )
-    ] : []
-  ],
-  resolve: {
-    alias: {
-      "@": path.resolve(import.meta.dirname, "client", "src"),
-      "@shared": path.resolve(import.meta.dirname, "shared"),
-      "@assets": path.resolve(import.meta.dirname, "attached_assets")
-    }
-  },
-  root: path.resolve(import.meta.dirname, "client"),
-  build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
-    emptyOutDir: true
-  }
-});
+var vite_config_default = {};
 
 // server/vite.ts
 import { nanoid } from "nanoid";
-var viteLogger = createLogger();
 function log(message, source = "express") {
   const formattedTime = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", {
     hour: "numeric",
@@ -365,6 +391,8 @@ async function setupVite(app2, server) {
     hmr: { server },
     allowedHosts: true
   };
+  const { createServer: createViteServer, createLogger } = await import("vite");
+  const viteLogger = createLogger();
   const vite = await createViteServer({
     ...vite_config_default,
     configFile: false,

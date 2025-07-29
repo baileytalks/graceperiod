@@ -2,12 +2,8 @@ import { Client } from "@notionhq/client";
 import { notion, NOTION_PAGE_ID, getNotionDatabases } from "./notion";
 
 // Environment variables validation
-if (!process.env.NOTION_INTEGRATION_SECRET) {
-    throw new Error("NOTION_INTEGRATION_SECRET is not defined. Please add it to your environment variables.");
-}
-
-if (!process.env.NOTION_PAGE_URL) {
-    throw new Error("NOTION_PAGE_URL is not defined. Please add it to your environment variables.");
+if (!notion || !NOTION_PAGE_ID) {
+    throw new Error("Notion environment variables are not configured.");
 }
 
 async function setupNotionDatabase() {
@@ -17,7 +13,7 @@ async function setupNotionDatabase() {
 
         // First, let's try to access the page directly
         try {
-            const page = await notion.pages.retrieve({ page_id: NOTION_PAGE_ID });
+            const page = await notion!.pages.retrieve({ page_id: NOTION_PAGE_ID! });
             console.log("✓ Successfully connected to Notion page");
         } catch (error) {
             console.error("✗ Failed to access Notion page:", error);
@@ -49,10 +45,10 @@ async function setupNotionDatabase() {
             console.log("\nNo posts database found. Creating one...");
             
             // Create a posts database
-            postsDb = await notion.databases.create({
+            postsDb = await notion!.databases.create({
                 parent: {
                     type: "page_id",
-                    page_id: NOTION_PAGE_ID
+                    page_id: NOTION_PAGE_ID!
                 },
                 title: [
                     {
@@ -88,7 +84,7 @@ async function setupNotionDatabase() {
             console.log("✓ Created Posts database");
 
             // Add a sample post
-            await notion.pages.create({
+            await notion!.pages.create({
                 parent: {
                     database_id: postsDb.id
                 },
